@@ -190,7 +190,7 @@ msgstr "Arkudvælgelse"
 #: ../goffice/app/file.c:717
 msgid "TRUE if this saver supports saving a subset of all sheets"
 msgstr ""
-"Sand hvis denne gemmefunktion understøtter, at en andel af alle ark gemmes"
+"Sand hvis denne gemmefunktion understøtter, at kun udvalgte ark gemmes"
 
 #: ../goffice/app/file.c:918
 msgid "Saving over old files of this type is disabled for safety."
@@ -4770,7 +4770,7 @@ msgstr "_Ingeniørnotation"
 
 #: ../goffice/gtk/go-format-sel.ui.h:34
 msgid "Restrict exponent to multiples of 3"
-msgstr "Begræns eksponent til muliplum af 3"
+msgstr "Begræns eksponent til mulipla af 3"
 
 #: ../goffice/gtk/go-format-sel.ui.h:35
 msgid "Use _superscript"
@@ -4778,7 +4778,7 @@ msgstr "Brug _superscript (hævet skrift)"
 
 #: ../goffice/gtk/go-format-sel.ui.h:36
 msgid "Use superscript for exponent (e.g. 4×10²)"
-msgstr "Brug hævet skrift (superscript) for eksponent (det vil sige 4×10²)"
+msgstr "Brug hævet skrift (superscript) for eksponent (f.eks. 4×10²)"
 
 #: ../goffice/gtk/go-format-sel.ui.h:37
 msgid "_Don't show 1×s"
@@ -4794,7 +4794,7 @@ msgstr "Tilføj SI-præfiks"
 
 #: ../goffice/gtk/go-format-sel.ui.h:40
 msgid "Append an SI prefix (e.g. instead of 4×10⁶ show 4M)"
-msgstr "Tilføj et SI-præfiks (dvs. i stedet for 4×10⁶ så vis 4M)"
+msgstr "Tilføj et SI-præfiks (f.eks. i stedet for 4×10⁶ så vis 4M)"
 
 #: ../goffice/gtk/go-format-sel.ui.h:42
 msgid "Append the SI unit:"
