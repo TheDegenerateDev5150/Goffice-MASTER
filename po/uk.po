@@ -96,7 +96,7 @@ msgid "Sheet Selection"
 msgstr "Вибір аркуша"
 
 #: ../goffice/app/file.c:717
-msgid "TRUE if this saver supports saving a subset of all sheet"
+msgid "TRUE if this saver supports saving a subset of all sheets"
 msgstr ""
 "TRUE, якщо у цьому засобі збереження передбачено підтримку збереження "
 "підмножини усіх аркушів"

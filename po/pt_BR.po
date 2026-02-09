@@ -105,7 +105,7 @@ msgid "Sheet Selection"
 msgstr "Seleção de folha"
 
 #: ../goffice/app/file.c:717
-msgid "TRUE if this saver supports saving a subset of all sheet"
+msgid "TRUE if this saver supports saving a subset of all sheets"
 msgstr ""
 "VERDADEIRO se esse gravador possuir suporte a gravação do subconjunto de "
 "todas as folhas"

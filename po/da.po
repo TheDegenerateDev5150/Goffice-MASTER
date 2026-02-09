@@ -188,7 +188,7 @@ msgid "Sheet Selection"
 msgstr "Arkudvælgelse"
 
 #: ../goffice/app/file.c:717
-msgid "TRUE if this saver supports saving a subset of all sheet"
+msgid "TRUE if this saver supports saving a subset of all sheets"
 msgstr ""
 "Sand hvis denne gemmefunktion understøtter, at en andel af alle ark gemmes"
 

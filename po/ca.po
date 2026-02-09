@@ -102,7 +102,7 @@ msgid "Sheet Selection"
 msgstr "Selecció de full"
 
 #: ../goffice/app/file.c:717
-msgid "TRUE if this saver supports saving a subset of all sheet"
+msgid "TRUE if this saver supports saving a subset of all sheets"
 msgstr "CERT si aquest desador admet el desat d'un subconjunt de tot el full"
 
 #: ../goffice/app/file.c:918

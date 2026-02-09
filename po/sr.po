@@ -97,7 +97,7 @@ msgid "Sheet Selection"
 msgstr "Одабир листа"
 
 #: ../goffice/app/file.c:717
-msgid "TRUE if this saver supports saving a subset of all sheet"
+msgid "TRUE if this saver supports saving a subset of all sheets"
 msgstr "TRUE ако овај чувар подржава чување подскупа свих листова"
 
 #: ../goffice/app/file.c:918

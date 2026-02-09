@@ -101,7 +101,7 @@ msgid "Sheet Selection"
 msgstr "Izbor delovnega lista"
 
 #: ../goffice/app/file.c:717
-msgid "TRUE if this saver supports saving a subset of all sheet"
+msgid "TRUE if this saver supports saving a subset of all sheets"
 msgstr ""
 "PRAV, če ta shranjevalnik podpira shranjevanje podskupine vseh delovnih "
 "listov"

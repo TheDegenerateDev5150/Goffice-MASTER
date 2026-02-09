@@ -99,7 +99,7 @@ msgid "Sheet Selection"
 msgstr "Munkalapkiválasztás"
 
 #: ../goffice/app/file.c:717
-msgid "TRUE if this saver supports saving a subset of all sheet"
+msgid "TRUE if this saver supports saving a subset of all sheets"
 msgstr "IGAZ, ha ez a mentő támogatja a munkalapok részhalmazának mentését"
 
 #: ../goffice/app/file.c:918

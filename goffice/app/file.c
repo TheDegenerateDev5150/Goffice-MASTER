@@ -714,7 +714,7 @@ go_file_saver_class_init (GOFileSaverClass *klass)
 		 FS_PROP_SHEET_SELECTION,
 		 g_param_spec_boolean ("sheet-selection",
 				      _("Sheet Selection"),
-				      _("TRUE if this saver supports saving a subset of all sheet"),
+				      _("TRUE if this saver supports saving a subset of all sheets"),
 				       FALSE,
 				       GSF_PARAM_STATIC |
 				       G_PARAM_READWRITE));

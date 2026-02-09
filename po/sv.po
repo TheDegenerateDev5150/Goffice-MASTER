@@ -113,7 +113,7 @@ msgid "Sheet Selection"
 msgstr "Bladurval"
 
 #: ../goffice/app/file.c:717
-msgid "TRUE if this saver supports saving a subset of all sheet"
+msgid "TRUE if this saver supports saving a subset of all sheets"
 msgstr "TRUE om denna sparare stöder sparande av en delmängd av alla blad"
 
 #: ../goffice/app/file.c:918
