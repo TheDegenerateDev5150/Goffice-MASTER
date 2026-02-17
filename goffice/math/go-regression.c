@@ -981,8 +981,8 @@ SUFFIX(go_exponential_regression_as_log) (MATRIX xss, int dim,
 	int i;
 	DOUBLE threshold = DEFAULT_THRESHOLD;
 
-	g_return_val_if_fail (dim >= 1, GO_REG_invalid_dimensions);
-	g_return_val_if_fail (n >= 1, GO_REG_invalid_dimensions);
+	if (dim < 1 || n < 1)
+		return GO_REG_invalid_dimensions;
 
 	log_ys = g_new (DOUBLE, n);
 	for (i = 0; i < n; i++)

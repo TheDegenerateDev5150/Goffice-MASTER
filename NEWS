@@ -1,5 +1,8 @@
 goffice 0.10.61:
 
+Morten:
+	* Fix regression error reporting problems.
+
 --------------------------------------------------------------------------
 goffice 0.10.60:
 
