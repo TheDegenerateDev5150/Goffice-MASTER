@@ -927,6 +927,19 @@ test_strto (void)
 {
 	start_section ("strto");
 
+	// Check that rounding applies where needed for denormals
+	test_eq (strtoDd ( "-1.6285971684225496E-385", NULL), -1.6285971684225e-385dd);
+	test_eq (strtoDd ( "-1.62859716842254949E-385", NULL), -1.6285971684225e-385dd);
+	test_eq (strtoDd ( "-4.2384999999999999E-395", NULL), -4.238e-395dd);
+	test_eq (strtoDd ( "-1.5049999999999999E-396", NULL), -1.50e-396dd);
+	test_eq (strtoDd ( "-3.4999999999999999E-398", NULL), -3.e-398dd);
+	test_eq (strtoDd ( "3.8194999999999999E-395", NULL), 3.819e-395dd);
+	test_eq (strtoDd ( "3.8414999999999999E-395", NULL), 3.841e-395dd);
+	test_eq (strtoDd ( "4.1351384999999999E-392", NULL), 4.135138e-392dd);
+	test_eq (strtoDd ( "12345678901234565E-399", NULL), 1.234567890123457e-383dd);
+	test_eq (strtoDd ( "1.0108144713502247E-384", NULL), 1.01081447135022e-384dd);
+	test_eq (strtoDd ( "1.0108144713502253E-384", NULL), 1.01081447135023e-384dd);
+
 	test_eq (strtoDd ("123", NULL), 123.dd);
 	test_eq (strtoDd ("123.", NULL), 123.dd);
 	test_eq (strtoDd ("+123.", NULL), 123.dd);

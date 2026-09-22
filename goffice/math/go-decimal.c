@@ -848,7 +848,7 @@ strtoDd (const char *s, char **end)
 	int scale = 0;
 	_Decimal64 res;
 	const char *dot = decimal_point ();
-
+        gboolean ru = FALSE;
 	while (isspace (*us))
 		us++;
 
@@ -884,8 +884,7 @@ strtoDd (const char *s, char **end)
 				if (m) digits++;
 				if (period) scale--;
 			} else if (digits == DECIMAL64_DIG) {
-				if (*us >= '5')
-					m++; // Always round away from 0
+                                ru = (*us >= '5');  // Delayed round-up.  Apply only for normals
 				if (!period) scale++;
 				digits++;
 			} else {
@@ -916,7 +915,10 @@ strtoDd (const char *s, char **end)
 	}
 
 	if (end) *end = (char *)us;
-	res = scalbnD (m, scale);
+	if (ru && (scale >= DECIMAL64_BIAS))
+		// Check if we need to round up.  Don't for subnormals.
+                m++;
+        res = scalbnD (m, scale);
 	if (sign) res = -res;
 	return res;
 }
