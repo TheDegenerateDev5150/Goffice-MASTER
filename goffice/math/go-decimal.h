@@ -46,7 +46,7 @@ _Decimal64 acoshD (_Decimal64 x);
 _Decimal64 asinD (_Decimal64 x);
 _Decimal64 asinhD (_Decimal64 x);
 _Decimal64 atanD (_Decimal64 x);
-_Decimal64 atan2D (_Decimal64 x, _Decimal64 y);
+_Decimal64 atan2D (_Decimal64 y, _Decimal64 x);
 _Decimal64 atanhD (_Decimal64 x);
 _Decimal64 cbrtD (_Decimal64 x);
 _Decimal64 ceilD (_Decimal64 x);

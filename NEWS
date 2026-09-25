@@ -3,6 +3,9 @@ goffice 0.10.63:
 B.S.:
 	* Denormal fixes for strtodD
 
+Morten:
+	* Decimal64 fixes.
+
 --------------------------------------------------------------------------
 goffice 0.10.62:
 

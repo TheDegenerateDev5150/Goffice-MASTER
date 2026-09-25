@@ -86,6 +86,19 @@
 //
 // * Stub via double.  Range:B, Accuracy:B
 
+
+// NOTE: Implementations have comments like
+//
+// * No need to handle overflow on the left because [...]
+// * No need to handle overflow to the right because [...]
+// * No need to handle underflow because [...]
+//
+// These refer to what happens when the argument is cast from _Decimal64
+// to double, typically implicitly in a stub call.  These are not claims
+// about whether the stub's result can overflow or underflow.
+
+
+
 #include <math/go-decimal.h>
 #include <math.h>
 #include <stdint.h>
@@ -308,7 +321,7 @@ u64_digits (uint64_t x)
 
 	assert (sizeof (long) == sizeof (uint64_t));
 	l2 = 63 - __builtin_clzl (x);
-	// log_10(2) is a hair bigger than 77/256
+	// log_10(2) is a hair smaller than 77/256
 	l10 = l2 * 77 / 256;
 
 	if (x >= u64_pow10_table[l10 + 1])
@@ -393,13 +406,10 @@ static int
 decimal_format (FILE *stream, const struct printf_info *info,
 		const void *const *args)
 {
-	char buffer[1024];
+	char buffer[8192];
 	int special, p10, sign;
 	int len = 0;
 	int qupper = (info->spec <= 'Z');
-	char signchar;
-	const char *dot = decimal_point ();
-	int dotlen = strlen (dot);
 
 	if (info->user & decimal64_modifier) {
 		_Decimal64 const *args0 = *(_Decimal64 **)(args[0]);
@@ -417,6 +427,13 @@ decimal_format (FILE *stream, const struct printf_info *info,
 		return -2;
 	}
 
+	// This isn't thread-safe and adds a measurable amount of overhead
+	// in the plain "%f" case, so only do this once we have verified
+	// that it's a format we want to handle.
+	const char *dot = decimal_point ();
+	int dotlen = strlen (dot);
+
+	char signchar;
 	if (sign)
 		signchar = '-';
 	else if (info->showsign)
@@ -425,6 +442,8 @@ decimal_format (FILE *stream, const struct printf_info *info,
 		signchar = ' ';
 	else
 		signchar = 0;
+
+	char padchar = info->pad;
 
 	switch (special) {
 	case CLS_NORMAL: {
@@ -553,6 +572,7 @@ decimal_format (FILE *stream, const struct printf_info *info,
 		} else {
 			// Shouldn't happen
 			buffer[0] = '?';
+			buffer[1] = 0;
 			len = 1;
 		}
 		break;
@@ -560,13 +580,16 @@ decimal_format (FILE *stream, const struct printf_info *info,
 	case CLS_NAN:
 		strcpy (buffer, (qupper ? "NAN" : "nan"));
 		len = 3;
+		padchar = ' ';
 		break;
 	case CLS_INF:
 		strcpy (buffer, (qupper ? "INF" : "inf"));
 		len = 3;
+		padchar = ' ';
 		break;
 	case CLS_INVALID:
 		buffer[0] = '0';
+		buffer[1] = 0;
 		len = 1;
 		p10 = 0;
 		break;
@@ -576,7 +599,7 @@ decimal_format (FILE *stream, const struct printf_info *info,
 
 	while (!info->left && len < info->width) {
 		len++;
-		putc (info->pad, stream);
+		putc (padchar, stream);
 	}
 	if (signchar) putc (signchar, stream);
 	fputs (buffer, stream);
@@ -592,11 +615,19 @@ init_decimal_printf_support (void)
 {
 	decimal64_type = register_printf_type (decimal64_va_arg);
 	decimal128_type = register_printf_type (decimal128_va_arg);
+	if (decimal64_type == -1 || decimal128_type == -1) {
+		g_printerr ("Failed to install printf handlers for Decimal64 and Decimal128.\n");
+		abort ();
+	}
 
 #define CAT(x,y) x ## y
 #define WSTR(x) CAT(L,x)
 	decimal64_modifier = register_printf_modifier (WSTR (GO_DECIMAL64_MODIFIER));
 	decimal128_modifier = register_printf_modifier (WSTR (GO_DECIMAL128_MODIFIER));
+	if (decimal64_modifier == -1 || decimal128_modifier == -1) {
+		g_printerr ("Failed to install printf modifiers for Decimal64 and Decimal128.\n");
+		abort ();
+	}
 #undef WSTR
 #undef CAT
 
@@ -721,12 +752,11 @@ ldexpD (_Decimal64 x, int e)
 		return x;
 
 	if (e > 1023) {
-		// Note: log2(DECIMAL64_MAX / DBL_MAX) =~ 252
-		return x * (_Decimal64)ldexp(1, 300) *
-			(_Decimal64)ldexp(1, e - 300);
+		return x * (_Decimal64)ldexp(1, 1023) *
+			(_Decimal64)ldexp(1, e - 1023);
 	} else if (e < -1023) {
-		return x * (_Decimal64)ldexp(1, -300) *
-			(_Decimal64)ldexp(1, e + 300);
+		return x * (_Decimal64)ldexp(1, -1023) *
+			(_Decimal64)ldexp(1, e + 1023);
 	} else
 		return x * (_Decimal64)(ldexp(1, e));
 }
@@ -766,8 +796,18 @@ scalblnD (_Decimal64 x, long e)
 	int p10, sign;
 	int too_far = (DECIMAL64_MAX_EXP - DECIMAL64_MIN_EXP) + DECIMAL64_DIG;
 
-	if (decode64 (&x, &mant, &p10, &sign) || mant == 0)
+	int special = decode64 (&x, &mant, &p10, &sign);
+	switch (special) {
+	case CLS_NORMAL:
+		if (mant == 0)
+			return x;
+		break;
+	case CLS_INVALID:
+		return sign ? -0.dd : 0.dd;
+	case CLS_NAN:
+	case CLS_INF:
 		return x;
+	}
 
 	p10 += CLAMP (e, -too_far, +too_far);
 	if (p10 > DECIMAL64_MAX_BIASED_EXP) {
@@ -857,7 +897,7 @@ strtoDd (const char *s, char **end)
 	else if (*us == '+')
 		us++;
 
-	if (!isdigit (*us) && !(g_str_has_prefix (us, dot) && isdigit (us[1]))) {
+	if (!isdigit (*us) && !(g_str_has_prefix (us, dot) && isdigit (us[strlen(dot)]))) {
 		if (caseprefix (us, "INFINITY"))
 			res = INFINITY, us += 8;
 		else if (caseprefix (us, "INF"))
@@ -989,8 +1029,8 @@ _Decimal64
 lgammaD_r (_Decimal64 x, int *signp)
 {
 	if (fabsD (x) <= (_Decimal64)DBL_MIN) {
-		*signp = x >= 0 ? +1 : -1;
-		return -logD (x);
+		*signp = (signbitD (x) ? -1 : +1);
+		return -logD (fabsD (x));
 	} else if (isfiniteD (x) && x >= (_Decimal64)DBL_MAX) {
 		*signp = +1;
 		return x * logD (x);
@@ -1024,14 +1064,53 @@ erfcD (_Decimal64 x)
 
 // ---------------------------------------------------------------------------
 
+// Compute f * exp(x)
+// Precondition: f should be 1.dd or 0.5dd, possibly negative, exact.
+static _Decimal64
+exp_helper (_Decimal64 x, _Decimal64 f)
+{
+	const _Decimal64 l10e = 0.434294481903251827651dd;
+	const _Decimal64 l10_h = 2.302585092994e-00dd;
+	const _Decimal64 l10_l = 4.568401799145e-14dd;  // free extra 0 in-between
+
+	if (fabsD (x) < 1000) {
+		// Get the power of 10.  We might be off by one once in a very
+		// blue moon, but that's fine.
+		_Decimal64 k = roundD (l10e * x);
+		// (k * l10_h) and (k * l10_l) are exact since k has at most
+		// three digits and the l10 parts have 13.
+		_Decimal64 xr = (x - (k * l10_h)) - (k * l10_l);
+		if (k > 300 && fabsD (f) < 1)
+			// If we're just on the edge of overflow, move a 10
+			// into f.
+			k--, f *= 10;
+		return f * scalblnD (exp (xr), k);
+	} else {
+		// Large or nan
+		return f * (_Decimal64)(exp (x));
+	}
+}
+
+
 _Decimal64
 sinhD (_Decimal64 x)
 {
-	// No need to handle overflow because result will overflow anyway
-	if (fabsD (x) <= (_Decimal64)DBL_MIN)
+	_Decimal64 ax = fabsD (x);
+
+	if (ax < 1e-10dd || !isfiniteD (x))
 		return x;
-	else
-		return sinh (x);
+	else if (ax < 1) {
+		_Decimal64 u = expm1D (x);
+		_Decimal64 r = 0.5dd * (u + u / (u + 1));
+		return copysignD (r, x);
+	} else if (ax < 30) {
+		_Decimal64 u = expD (x);
+		_Decimal64 r = 0.5dd * (u - 1 / u);
+		return copysignD (r, x);				
+	} else {
+		// ax > 30
+		return copysignD (exp_helper (ax, 0.5dd), x);
+	}
 }
 
 _Decimal64
@@ -1048,17 +1127,31 @@ asinhD (_Decimal64 x)
 _Decimal64
 coshD (_Decimal64 x)
 {
-	// No need to handle overflow because result will overflow anyway
-	// No need to handle underflow because cosh(0)=1
-	return cosh (x);
+	if (isnanD (x)) {
+		// Specifically there to -nan -> -nan to match libc's cosh
+		return x;
+	}
+
+	x = fabsD (x);
+	if (x > 30)
+		return exp_helper (x, 0.5dd);
+	else {
+		_Decimal64 u = exp_helper (x, 1);
+		return 0.5dd * (u + 1 / u);
+	}
 }
 
 _Decimal64
 acoshD (_Decimal64 x)
 {
 	// No need to handle underflow because the domain is [1,inf[
-	if (x >= (_Decimal64)DBL_MAX)
+	if (x >= 1e10dd)
 		return logD (x) + M_LN2D;
+	if (x < 1) {
+		// Prevent rounding up to 1.  Call acosh for getting
+		// the same nan as libc.
+		return acosh (0);
+	}
 	return acosh (x);
 }
 
@@ -1066,7 +1159,7 @@ _Decimal64
 tanhD (_Decimal64 x)
 {
 	// No need to handle overflow because of horizontal tangents
-	if (fabsD (x) <= (_Decimal64)DBL_MIN)
+	if (fabsD (x) <= 1e-10dd)
 		return x;
 	else
 		return tanh (x);
@@ -1343,7 +1436,7 @@ log_helper (_Decimal64 x, int base)
 	if (base == 2) {
 		return p2 + M_LG10D * p10 + (_Decimal64)(log2 (dx));
 	} else {
-		p10 += (p2 * 77 + 128) / 256;
+	p10 += (p2 * 77 + 128) / 256;
 		_Decimal64 residual = ((_Decimal64)(log10 (dx)) + res[p2]);
 		_Decimal64 l10 = p10 + residual;
 		return base == 10 ? l10 : l10 * M_LN10D;
@@ -1376,9 +1469,8 @@ logD (_Decimal64 x)
 _Decimal64
 log1pD (_Decimal64 x)
 {
-	_Decimal64 ax = fabsD (x);
-
-	if (ax < 1) {
+	if (-0.5dd < x && x < 1) {
+		_Decimal64 ax = fabsD (x);
 		// x - x^2/2 + ... so this is fine:
 		if (ax <= 0.01dd * (DECIMAL64_EPSILON * DECIMAL64_EPSILON))
 			return x;
@@ -1390,17 +1482,17 @@ log1pD (_Decimal64 x)
 _Decimal64
 expD (_Decimal64 x)
 {
-	// No need to handle overflow because horizontal tangent (left) and overflow (right)
-	// No need to handle underflow because exp(0)=1
-	return exp (x);
+	return exp_helper (x, 1);
 }
 
 _Decimal64
 expm1D (_Decimal64 x)
 {
-	// No need to handle overflow because horizontal tangent (left) and overflow (right)
-	if (fabsD (x) <= (_Decimal64)DBL_MIN)
+	// No need to handle negative overflow because of horizontal tangent
+	if (fabsD (x) <= DECIMAL64_EPSILON)
 		return x;
+	else if (x > 50)
+		return exp_helper (x, 1);  // -1 isn't going to make a difference in this range
 	else
 		return expm1 (x);
 }
@@ -1480,18 +1572,33 @@ powD (_Decimal64 x, _Decimal64 y)
 		return (ysign ? 0.dd : (_Decimal64)INFINITY);
 	}
 
-	if (x == 10 && isint (y) && fabsD (y) < INT_MAX)
-		return pow10D ((int)y);
+	// End of mandated special cases
+
+	int qinty = isint (y);
+	if (qinty) {
+		// A few special cases where we can do a lot better than
+		// going via plain pow.
+		if (y == -1) return 1 / x;
+		if (y == 1) return x;
+		if (y == 2) return x * x;
+	}
 
 	if (x < 0) {
-		int qint = isint (y);
-		if (!qint)
+		if (!qinty)
 			return NAN;
-		qneg = qint < 0;
+		qneg = qinty < 0;
 		x = -x;
 	}
 
-	z = pow (x, y);
+	if (x == 10 && fabsD (y) <= G_MAXINT) {
+		// This could be extended to x being any integer power of 10
+		int iy = (int)roundD (y);
+		_Decimal64 dy = y - iy;
+		z = scalbnD (pow (x, dy), iy);
+	} else {
+		z = pow (x, y);
+	}
+
 	return qneg ? -z : z;
 }
 
@@ -1578,11 +1685,12 @@ sqrtD (_Decimal64 x)
 		s = +150;
 	}
 
-	x = sqrt (x);
-	// We could do a newton step here.
+	_Decimal64 r = sqrt (x);
+	// Newton step
+	r = (r + x / r) / 2;
 
-	x = scalbnD (x, s);
-	return x;
+	r = scalbnD (r, s);
+	return r;
 }
 
 _Decimal64
@@ -1603,10 +1711,11 @@ cbrtD (_Decimal64 x)
 		s = 100;
 	}
 
-	x = cbrt (x);
-	// We could do a newton step here.
+	_Decimal64 r = cbrt (x);
+	// Newton step
+	r = (2 * r + x / (r * r)) / 3;
 
-	return scalbnD (x, s);
+	return scalbnD (r, s);
 }
 
 _Decimal64
@@ -1657,9 +1766,23 @@ hypotD (_Decimal64 x, _Decimal64 y)
 _Decimal64
 jnD (int n, _Decimal64 x)
 {
-	if ((n == 1 || n == -1) && fabsD (x) <= (_Decimal64)DBL_MIN)
-		return x / (2 * n);
-	// No need to handle other underflows
+	_Decimal64 ax = fabsD (x);
+
+	if (ax > 0 && ax <= DECIMAL64_EPSILON && n != 0 && n != G_MININT) {
+		int an = n > 0 ? n : -n;
+
+		_Decimal64 f1 = powD (x, an);
+		if (f1 == 0)
+			// Hmm...  powD underflowed.  Until powD is improved,
+			// try via log.
+			f1 = expD (an * logD (x));
+
+		_Decimal64 r = f1 / (_Decimal64)(ldexp (tgamma (an + 1), an));
+
+		if (n < 0 && (an & 1))
+			r = -r;
+		return r;
+	}
 
 	// FIXME: need to handle large values.  Going via "double" is no good.
 
@@ -1689,7 +1812,7 @@ _go_decimal_init (void)
 		// Is this fails, Decimal64 is probably dpd encoded.
 		// (or we have really weird endianness going on)
 		g_printerr ("Decimal64 numbers are not bis encoded.\n");
-		g_printerr ("(Got x%lx, expected 0x%lx)\n", u64, expected);
+		g_printerr ("(Got 0x%lx, expected 0x%lx)\n", u64, expected);
 		abort ();
 	}
 
