@@ -1999,12 +1999,6 @@ jnD (int n, _Decimal64 x)
 		int an = n > 0 ? n : -n;
 
 		_Decimal64 f1 = powD (x, an);
-		if (an >= 3 && fabsD (f1) < (_Decimal64)DBL_MIN) {
-			// Hmm...  powD underflowed (or went to denormal).
-			// Until powD is improved, try via log.
-			f1 = expD (an * logD (x));
-		}
-
 		_Decimal64 r = f1 / (_Decimal64)(ldexp (tgamma (an + 1), an));
 
 		if (n < 0 && (an & 1))

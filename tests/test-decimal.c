@@ -192,7 +192,7 @@ ulp_err (_Decimal64 got, _Decimal64 want)
 		return got == 0 ? 0.dd : 1e30dd;
 
 	(void)unscalbnD (want, &e);
-	// want = m * 10^e with 0.1 <= |m| < 1, so an ulp is normally 10^(e-16),
+	// want = m * 10^e with 0.1 <= |m| < 1, so a ulp is normally 10^(e-16),
 	// but clamp so this stays finite (and meaningful) all the way down
 	// into the denormal range, where the actual quantum is 10^-398.
 	e -= DECIMAL64_DIG;
@@ -2170,8 +2170,8 @@ test_range (void)
 	CLOSE (jnD (-1, 1e-320dd), -5e-321dd, 1);
 	CLOSE (jnD (3, 1e-100dd), 2.083333333333333e-302dd, 3);
 	CLOSE (jnD (2, 1e-190dd), 1.25e-381dd, 3);
-	CLOSE_XF (jnD (3, 1e-120dd), 2.083333333333333e-362dd, 3);
-	CLOSE_XF (jnD (3, 5e-107dd), 2.604166666666667e-321dd, 3);
+	CLOSE (jnD (3, 1e-120dd), 2.083333333333333e-362dd, 3);
+	CLOSE (jnD (3, 5e-107dd), 2.604166666666667e-321dd, 3);
 
 	// ldexp: 2^n is computed in double
 	CLOSE (ldexpD (1e-300dd, 1400), 2.766902970275812e121dd, 2);
