@@ -250,6 +250,40 @@ decode128_bis (_Decimal128 const *args0, uint64_t *pmantu, uint64_t *pmantl,
 	return special;
 }
 
+// Like decimal64, but normalize.
+static int
+decode64_norm (_Decimal64 const *args0, uint64_t *pmant, int *pp10, int *sign)
+{
+	uint64_t mant;
+	int p10;
+	int special = decode64 (args0, &mant, &p10, sign);
+
+	switch (special) {
+	case CLS_INF:
+	case CLS_NAN:
+		break;
+
+	case CLS_INVALID:
+		special = CLS_NORMAL;
+		break;
+
+	default:
+	case CLS_NORMAL:
+		if (mant)
+			while (mant % 10 == 0) {
+				mant /= 10;
+				p10++;
+			}
+		else
+			p10 = 0;
+		break;
+	}
+
+	if (pp10) *pp10 = p10;
+	if (pmant) *pmant = mant;
+	return special;
+}
+
 static void
 render128 (char *buffer, uint64_t u, uint64_t l)
 {
@@ -307,6 +341,17 @@ u64_pow10_table[20] = {
 	100000000000000000ull,
 	1000000000000000000ull,
 	10000000000000000000ull,
+};
+
+// 5^0 .. 5^22 -- all fit comfortably in 64 bits
+static const uint64_t
+u64_pow5_table[23] = {
+	1ull, 5ull, 25ull, 125ull, 625ull, 3125ull, 15625ull,
+	78125ull, 390625ull, 1953125ull, 9765625ull, 48828125ull,
+	244140625ull, 1220703125ull, 6103515625ull, 30517578125ull,
+	152587890625ull, 762939453125ull, 3814697265625ull,
+	19073486328125ull, 95367431640625ull, 476837158203125ull,
+	2384185791015625ull
 };
 
 
@@ -1190,7 +1235,7 @@ sinhD (_Decimal64 x)
 	} else if (ax < 30) {
 		_Decimal64 u = expD (x);
 		_Decimal64 r = 0.5dd * (u - 1 / u);
-		return copysignD (r, x);				
+		return copysignD (r, x);
 	} else {
 		// ax > 30
 		return copysignD (exp_helper (ax, 0.5dd), x);
@@ -1478,7 +1523,7 @@ log_helper (_Decimal64 x, int base)
 		-0.03511027316918470dd,
 	};
 
-	special = decode64 (&x, &mant, &p10, &sign);
+	special = decode64_norm (&x, &mant, &p10, &sign);
 	switch (special) {
 	case CLS_NAN:
 		return x;
@@ -1509,11 +1554,6 @@ log_helper (_Decimal64 x, int base)
 		}
 	}
 
-	while (mant % 10 == 0) {
-		mant /= 10;
-		p10++;
-	}
-
 	p2 = 0;
 	while ((mant & 1) == 0) {
 		mant >>= 1;
@@ -1528,7 +1568,7 @@ log_helper (_Decimal64 x, int base)
 			// A positive exact power
 			return p2;
 		} else if (p10 < 0 && p10 >= -DECIMAL64_MANT_DIG &&
-			   mant == u64_pow10_table[-p10] >> -p10) {
+			   mant == u64_pow5_table[-p10]) {
 			// On the negative side we test mant==5^(-p10).
 			return p10;
 		}
@@ -1645,6 +1685,41 @@ isint (_Decimal64 x)
 	return 1 - ((mant & 1) << 1);
 }
 
+// Is (mant,p10) exactly representable as a double?
+// Prerequisite: (mant,p10) normalized
+static gboolean
+qrepdbl (uint64_t mant, int p10)
+{
+	g_return_val_if_fail (mant <= 9999999999999999ull, FALSE);
+
+	if (mant == 0)
+		return TRUE;
+
+	if (p10 >= 0) {
+		if (p10 > 22)
+			return FALSE;
+
+		while ((mant & 1) == 0)
+			mant >>= 1;
+
+		uint64_t pow5 = u64_pow5_table[p10];
+		return mant <= ((1ull << 53) - 1) / pow5;
+	} else {
+		int k = -p10;
+		// Cannot have too many digits after decimal point
+		if (k > DECIMAL64_MANT_DIG)
+			return FALSE;
+
+		// Fractional part must multiple of 5^k
+		uint64_t pow5 = u64_pow5_table[k];
+		if (mant % pow5 != 0)
+			return FALSE;
+
+		// We must have room for the rest.
+		mant /= pow5;
+		return mant < (1ull << 53);
+	}
+}
 
 
 _Decimal64
@@ -1701,6 +1776,23 @@ powD (_Decimal64 x, _Decimal64 y)
 		if (y == -1) return 1 / x;
 		if (y == 1) return x;
 		if (y == 2) return x * x;
+
+		int p10x;
+		uint64_t mantx;
+		(void)decode64_norm (&x, &mantx, &p10x, NULL);
+
+		_Decimal64 ay = fabsD (y);
+		int iy = (ay < 1000 ? (int)y : 1000);
+		int iay = (iy < 0 ? -iy : iy);
+		if (!qrepdbl (mantx, p10x) &&
+		    mantx <= (1ull << 53) &&
+		    iay * u64_digits (mantx) < DECIMAL64_MAX_EXP - 10) {
+			// x is not representable as a double
+			// y is a smallish integer
+			// mantx is representable as a double
+			// mants^y will not overflow
+			return scalbnD (pow (mantx, y), p10x * iy);
+		}
 	}
 
 	if (x < 0) {
