@@ -1408,7 +1408,6 @@ test_special_values (void)
 					worst = u;
 				firstbad = MIN (firstbad, i);
 				lastbad = i;
-				g_printerr ("%d\n", i);
 			}
 		}
 		test_true (worst <= 10,
@@ -2134,7 +2133,7 @@ test_range (void)
 
 	// lgamma
 	CLOSE (lgammaD (1e300dd), 6.897755278982137e302dd, 2);
-	CLOSE_XF (lgammaD (1e306dd), 7.03591038456178e308dd, 2);
+	CLOSE (lgammaD (1e306dd), 7.03591038456178e308dd, 2);
 	EQ (lgammaD (DECIMAL64_MAX), PINF);   // ~7e387, truly out of range
 	CLOSE (lgammaD (1e-300dd), 690.7755278982137dd, 2);
 	CLOSE (lgammaD (1e-320dd), 736.8272297580946dd, 2);

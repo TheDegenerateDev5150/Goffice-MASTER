@@ -1030,9 +1030,26 @@ lgammaD_r (_Decimal64 x, int *signp)
 	if (fabsD (x) <= (_Decimal64)DBL_MIN) {
 		*signp = (signbitD (x) ? -1 : +1);
 		return -logD (fabsD (x));
-	} else if (isfiniteD (x) && x >= (_Decimal64)DBL_MAX) {
+	} else if (isfiniteD (x) && x >= 1e20dd) {
+		// Stirling's asymptotic expansion, evaluated natively in
+		// _Decimal64 so we never round-trip through "double" (whose
+		// own lgamma() already overflows somewhere around x=1e306,
+		// long before the true result overflows _Decimal64's own
+		// range around x=1.14e382).  For x this large the 1/(12x)
+		// correction term -- and everything past it -- is far below
+		// 16-digit precision relative to the ~x*ln(x) sized result,
+		// so the bare leading term is already correctly rounded; if
+		// the true result is itself too big for _Decimal64, this
+		// naturally overflows to infinity like any other _Decimal64
+		// arithmetic would.
+
 		*signp = +1;
-		return x * logD (x);
+
+		// const _Decimal64 half_ln_2pi = 0.9189385332046727dd;
+		// return (x - 0.5dd) * logD (x) - x + half_ln_2pi;
+
+		// Simplified, given how big x is:
+		return x * (logD (x) - 1);
 	}
 	// No need to handle overflow on the left as all large numbers
 	// are integers.
