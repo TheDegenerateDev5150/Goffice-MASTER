@@ -133,6 +133,8 @@ enum {
 	CLS_INF
 };
 
+#define CCHR(s) ((const char *)(s))
+
 // ---------------------------------------------------------------------------
 
 static char *decimal_point_str;
@@ -909,16 +911,17 @@ unscalbnD (_Decimal64 x, int *e)
 	return make64 (mant, -m10, sign);
 }
 
-static int
+static gboolean
 caseprefix (const unsigned char *us, const char *p)
 {
 	while (*p) {
-		if (*p != toupper (*us))
-			return 0;
+		unsigned char c = *p;
+		if (c != toupper (*us))
+			return FALSE;
 		p++;
 		us++;
 	}
-	return 1;
+	return TRUE;
 }
 
 _Decimal64
@@ -941,7 +944,7 @@ strtoDd (const char *s, char **end)
 	else if (*us == '+')
 		us++;
 
-	if (!isdigit (*us) && !(g_str_has_prefix (us, dot) && isdigit (us[strlen(dot)]))) {
+	if (!isdigit (*us) && !(g_str_has_prefix (CCHR (us), dot) && isdigit (us[strlen(dot)]))) {
 		if (caseprefix (us, "INFINITY"))
 			res = INFINITY, us += 8;
 		else if (caseprefix (us, "INF"))
@@ -957,8 +960,8 @@ strtoDd (const char *s, char **end)
 		return sign ? -res : res;
 	}
 
-	while (isdigit (*us) || g_str_has_prefix (us, dot)) {
-		if (g_str_has_prefix (us, dot)) {
+	while (isdigit (*us) || g_str_has_prefix (CCHR (us), dot)) {
+		if (g_str_has_prefix (CCHR (us), dot)) {
 			if (period)
 				break;
 			period = 1;
@@ -1690,7 +1693,7 @@ isint (_Decimal64 x)
 static gboolean
 qrepdbl (uint64_t mant, int p10)
 {
-	g_return_val_if_fail (mant <= 9999999999999999ull, FALSE);
+	g_return_val_if_fail (mant <= DECIMAL64_MAX_MANT, FALSE);
 
 	if (mant == 0)
 		return TRUE;
@@ -1777,21 +1780,25 @@ powD (_Decimal64 x, _Decimal64 y)
 		if (y == 1) return x;
 		if (y == 2) return x * x;
 
-		int p10x;
+		int p10x, signx;
 		uint64_t mantx;
-		(void)decode64_norm (&x, &mantx, &p10x, NULL);
+		(void)decode64_norm (&x, &mantx, &p10x, &signx);
 
 		_Decimal64 ay = fabsD (y);
 		int iy = (ay < 1000 ? (int)y : 1000);
 		int iay = (iy < 0 ? -iy : iy);
+		int digits_needed = iay * u64_digits (mantx);
 		if (!qrepdbl (mantx, p10x) &&
-		    mantx <= (1ull << 53) &&
-		    iay * u64_digits (mantx) < DECIMAL64_MAX_EXP - 10) {
+		    qrepdbl (mantx, 0) &&
+		    digits_needed < DBL_MAX_10_EXP - 10) {
 			// x is not representable as a double
 			// y is a smallish integer
 			// mantx is representable as a double
-			// mants^y will not overflow
-			return scalbnD (pow (mantx, y), p10x * iy);
+			// mantx^y will not overflow
+			_Decimal64 z = scalbnD (pow (mantx, y), p10x * iy);
+			if (signx && qinty < 0)
+				z = -z;
+			return z;
 		}
 	}
 
@@ -1813,20 +1820,9 @@ powD (_Decimal64 x, _Decimal64 y)
 	} else {
 		z = pow (x, y);
 		if (z == (_Decimal64)INFINITY || z < (_Decimal64)DBL_MIN) {
-			// Hmm...  Overflow or near-underflow
-			// Try via log10.
-			_Decimal64 lx = log10D (x);
-			_Decimal64 ylx = y * lx;
-			_Decimal64 iylx = roundD (ylx);
-			if (iylx > DECIMAL64_MAX_EXP + 20)
-				z = INFINITY;
-			else if (iylx < DECIMAL64_MIN_EXP - 20)
-				z = 0;
-			else {
-				// We don't have fmaD
-				double rylx = fma (y, lx, -iylx);
-				z = scalbnD (pow (10, rylx), (int)iylx);
-			}
+			// Overflow or near-underflow.  Retry
+			z = pow (x, y / 2);
+			z *= z;
 		}
 	}
 

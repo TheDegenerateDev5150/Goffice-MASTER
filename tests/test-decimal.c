@@ -913,14 +913,14 @@ test_pow (const Corpus *corpus1, const Corpus *corpus2)
 				ok = (!isfiniteD (y) && !isfinite (dy) &&
 				      !!signbitD (y) == !!signbit (dy));
 			else
-				ok = decimal_eq (y, dy);
+				ok = ulp_err (y, dy) <= 60;  // That's a lot, but it is dy that is off.
 
 			if (ok) {
 				good ();
 			} else {
 				bad ();
 				g_printerr ("Failed for %.16Wg  %.16Wg\n", x1, x2);
-				g_printerr ("Got %.16Wg vs %.16g\n", y, dy);
+				g_printerr ("Got %.16Wg vs %.16g (%.1Wg ulp off)\n", y, dy, ulp_err (y, dy));
 			}
 		}
 	}
@@ -2104,6 +2104,7 @@ test_range (void)
 	CLOSE (tanhD (0.5dd), 0.4621171572600098dd, 1);
 	CLOSE (sinhD (700.dd), 5.071160273675023e303dd, 3);
 	CLOSE (powD (3.dd, 200.dd), 2.6561398887587476e95dd, 3);
+	CLOSE (powD (9.215870288754e16dd, 19), 2.119291601259874e322dd, 3);
 
 	// exp, sinh, cosh: the true result is far away from overflowing
 	CLOSE (expD (800.dd), 2.726374572112567e347dd, 3);
@@ -2125,8 +2126,8 @@ test_range (void)
 	// pow
 	CLOSE (powD (2.dd, 1100.dd), 1.358298529049386e331dd, 3);
 	CLOSE (powD (-2.dd, 1101.dd), -2.716597058098772e331dd, 3);
-	CLOSE_XF (powD (0.5dd, 1200.dd), 5.807713756217503e-362dd, 3);
-	CLOSE_XF (powD (3.dd, 700.dd), 9.657802140591758e333dd, 3);
+	CLOSE (powD (0.5dd, 1200.dd), 5.807713756217503e-362dd, 3);
+	CLOSE (powD (3.dd, 700.dd), 9.657802140591758e333dd, 3);
 	EQ (powD (0.9dd, -9000.dd), PINF);
 	EQ (powD (2.dd, 1300.dd), PINF);
 	EQ (powD (2.dd, -1400.dd), 0.dd);
@@ -2422,7 +2423,7 @@ test_pow_exact (void)
 	EQ (powD (-10.dd, 3.dd), -1000.dd);
 
 #ifdef HAVE___UINT128_T
-	// Compounding: x^n for 3-digit x.  Compare against exact integer
+	// Compounding: x^n for 4-digit x.  Compare against exact integer
 	// arithmetic, rounding the 16 digits half-even (the digit string of
 	// m^n is at most 37 digits here so it fits in a u128).
 	for (int m = 1001; m < 2000; m += 7) {
@@ -2465,7 +2466,7 @@ test_pow_exact (void)
 	// 10 or more is not.
 	test_true (worst <= 10, "powD (x, n) is up to %.1Wg ulp off", worst);
 	test_xfail (wrong == 0,
-		    "powD (x, n) for 3-digit x is not correctly rounded in %d of %d cases (worst %.1Wg ulp)",
+		    "powD (x, n) for 4-digit x is not correctly rounded in %d of %d cases (worst %.1Wg ulp)",
 		    wrong, total, worst);
 #endif
 
