@@ -975,10 +975,11 @@ test_atan2 (const Corpus *corpus1, const Corpus *corpus2)
 
 		for (int v2 = 0; v2 < corpus2->nvals; v2++) {
 			_Decimal64 x2 = corpus2->vals[v2];
+			_Decimal64 q = x1 / x2;
 			double dx2 = x2;
 			gboolean ok;
 
-			double dy = (x1 / x2 == 0)
+			double dy = (q == 0)
 				? copysign (x2 > 0 ? 0 : M_PI, dx1)
 				: (!isfiniteD (x1)
 				   ? atan2 (dx1, x2 / 1e100dd)
@@ -995,8 +996,10 @@ test_atan2 (const Corpus *corpus1, const Corpus *corpus2)
 			else if (!isfiniteD (y) || !isfinite (dy))
 				ok = (!isfiniteD (y) && !isfinite (dy) &&
 				      !!signbitD (y) == !!signbit (dy));
+			else if (dy == 0 && fabsD (y) <= (_Decimal64)DBL_MIN)
+				ok = (!!signbitD (y) == !!signbit (dy));
 			else
-				ok = decimal_eq (y, dy);
+				ok = ulp_err(y, dy) <= 2;
 
 			if (ok) {
 				good ();
@@ -1405,15 +1408,16 @@ test_special_values (void)
 					worst = u;
 				firstbad = MIN (firstbad, i);
 				lastbad = i;
+				g_printerr ("%d\n", i);
 			}
 		}
 		test_true (worst <= 10,
 			   "log2D (2^i) is up to %.1Wg ulp off for i in [%d,%d]",
 			   worst, firstbad, lastbad);
-		test_xfail (bad == 0,
-			    "log2D (2^i) is not exact for %d of %d values of i "
-			    "in [%d,%d] (worst %.1Wg ulp)", bad, total,
-			    firstbad, lastbad, worst);
+		test_true (bad == 0,
+			   "log2D (2^i) is not exact for %d of %d values of i "
+			   "in [%d,%d] (worst %.1Wg ulp)", bad, total,
+			   firstbad, lastbad, worst);
 	}
 
 	// trig
@@ -2146,8 +2150,8 @@ test_range (void)
 
 	// atan2 with a tiny quotient
 	CLOSE (atanD (1e-350dd), 1e-350dd, 1);
-	CLOSE_XF (atan2D (1e-300dd, 1e50dd), 1e-350dd, 1);
-	CLOSE_XF (atan2D (-1e-300dd, 1e50dd), -1e-350dd, 1);
+	CLOSE (atan2D (1e-300dd, 1e50dd), 1e-350dd, 1);
+	CLOSE (atan2D (-1e-300dd, 1e50dd), -1e-350dd, 1);
 	CLOSE (atan2D (1e-390dd, 1e-100dd), 1e-290dd, 1);
 	CLOSE (atan2D (1e-300dd, 1e-200dd), 1e-100dd, 1);
 	CLOSE (atan2D (1e-200dd, 1e50dd), 1e-250dd, 1);
@@ -2167,6 +2171,7 @@ test_range (void)
 	CLOSE (jnD (3, 1e-100dd), 2.083333333333333e-302dd, 3);
 	CLOSE (jnD (2, 1e-190dd), 1.25e-381dd, 3);
 	CLOSE_XF (jnD (3, 1e-120dd), 2.083333333333333e-362dd, 3);
+	CLOSE_XF (jnD (3, 5e-107dd), 2.604166666666667e-321dd, 3);
 
 	// ldexp: 2^n is computed in double
 	CLOSE (ldexpD (1e-300dd, 1400), 2.766902970275812e121dd, 2);

@@ -118,7 +118,6 @@
 #define DECIMAL128_BIAS (-6176)
 
 #define M_LN10D  2.3025850929940456840179914546843642076dd // log(10)
-#define M_LG10D  3.32192809488736235dd                     // log_2(10)
 #define M_LN2D   0.6931471805599453094dd                   // log(2)
 #define M_SQRT2D 1.414213562373095dd                       // sqrt(2)
 
@@ -1271,11 +1270,11 @@ atan2D (_Decimal64 y, _Decimal64 x)
 	const _Decimal64 PI_1_4 = 0.7853981633974483dd;
 	const _Decimal64 PI_1_2 = 1.570796326794897dd;
 	const _Decimal64 PI_3_4 = 2.356194490192345dd;
-	int signx, signy, specialx, specialy;
+	int signx, signy, p10x, p10y, specialx, specialy;
 	uint64_t mantx, manty;
 
-	specialy = decode64 (&y, &manty, NULL, &signy);
-	specialx = decode64 (&x, &mantx, NULL, &signx);
+	specialy = decode64 (&y, &manty, &p10y, &signy);
+	specialx = decode64 (&x, &mantx, &p10x, &signx);
 
 	if (specialy == CLS_NAN) return y;
 	if (specialx == CLS_NAN) return x;
@@ -1289,12 +1288,27 @@ atan2D (_Decimal64 y, _Decimal64 x)
 	else if (mantx == 0)
 		return copysignD (PI_1_2, y);
 
-	if (fabsD (y) >= 1e100dd || fabsD (x) >= 1e100dd) {
-		y = scalbnD (y, -100);
-		x = scalbnD (x, -100);
-	} else if (fabsD (y) <= 1e-100dd || fabsD (x) <= 1e-100dd) {
-		y = scalbnD (y, +100);
-		x = scalbnD (x, +100);
+	int d10x = p10x + u64_digits (mantx);
+	int d10y = p10y + u64_digits (manty);
+
+	if (d10x - d10y > 20) {
+		//  The stub answer could underflow.
+		_Decimal64 q = y / x;
+		return signx
+			? (signy ? -M_PID - q : M_PID + q)
+			: q;
+	}
+
+	if (d10y - d10x > 20) {
+		return copysignD (PI_1_2, y);
+	}
+
+	if (d10x >= DBL_MAX_10_EXP - 20) {
+		y = scalbnD (y, -DBL_MAX_10_EXP);
+		x = scalbnD (x, -DBL_MAX_10_EXP);
+	} else if (d10x <= DBL_MIN_10_EXP + 20) {
+		y = scalbnD (y, -DBL_MIN_10_EXP);
+		x = scalbnD (x, -DBL_MIN_10_EXP);
 	}
 
 	return atan2 (y, x);
@@ -1310,7 +1324,9 @@ log_helper (_Decimal64 x, int base)
 	uint64_t mant;
 	_Decimal64 xm1;
 	double dx;
-	static const _Decimal64 res[64] = {
+	static const _Decimal64 lg10_h = 3.32192809488dd;  // 12 digits
+	static const _Decimal64 lg10_l = 7.362347870319429e-12dd;
+		static const _Decimal64 res[64] = {
 		+0.dd,
 		+0.3010299956639812dd,
 		-0.3979400086720376dd,
@@ -1419,10 +1435,18 @@ log_helper (_Decimal64 x, int base)
 		p2++;
 	}
 
-	while (base == 2 && p10 != 0 && mant % 5 == 0) {
-		mant /= 5;
-		p10++;
-		p2--;
+	if (base == 2) {
+		// Is x an exact power of two?  (Not strictly necessary,
+		// but cheap.)
+
+		if (mant == 1 && p10 == 0) {
+			// A positive exact power
+			return p2;
+		} else if (p10 < 0 && p10 >= -DECIMAL64_MANT_DIG &&
+			   mant == u64_pow10_table[-p10] >> -p10) {
+			// On the negative side we test mant==5^(-p10).
+			return p10;
+		}
 	}
 
 	bits = 63 - __builtin_clzl (mant);
@@ -1433,13 +1457,24 @@ log_helper (_Decimal64 x, int base)
 		p2++;
 	}
 
-	if (base == 2) {
-		return p2 + M_LG10D * p10 + (_Decimal64)(log2 (dx));
-	} else {
+	// Always go via log10.  p10 can be large (several hundred), so
+	// computing log2(x) as "p2 + log2(10) * p10 + log2(dx)" multiplies
+	// that large p10 by the *imprecise* (16-digit) constant log2(10).
+	// giving an absolute error that grows with |p10|; when x happens to
+	// be close to a power of 2, that absolute error swamps the (small)
+	// true result.
 	p10 += (p2 * 77 + 128) / 256;
-		_Decimal64 residual = ((_Decimal64)(log10 (dx)) + res[p2]);
-		_Decimal64 l10 = p10 + residual;
-		return base == 10 ? l10 : l10 * M_LN10D;
+	_Decimal64 residual = ((_Decimal64)(log10 (dx)) + res[p2]);
+	switch (base) {
+	case 10: return p10 + residual;
+	case  3: return (p10 + residual) * M_LN10D;
+	default:
+	case  2: {
+		_Decimal64 t1 = lg10_h * p10;  // Exact due to |p10| < 1000
+		_Decimal64 t2 = lg10_h * residual;
+		_Decimal64 t34 = lg10_l * (p10 + residual);
+		return t1 + (t2 + t34);
+	}
 	}
 }
 
@@ -1772,10 +1807,11 @@ jnD (int n, _Decimal64 x)
 		int an = n > 0 ? n : -n;
 
 		_Decimal64 f1 = powD (x, an);
-		if (f1 == 0)
-			// Hmm...  powD underflowed.  Until powD is improved,
-			// try via log.
+		if (an >= 3 && fabsD (f1) < (_Decimal64)DBL_MIN) {
+			// Hmm...  powD underflowed (or went to denormal).
+			// Until powD is improved, try via log.
 			f1 = expD (an * logD (x));
+		}
 
 		_Decimal64 r = f1 / (_Decimal64)(ldexp (tgamma (an + 1), an));
 
