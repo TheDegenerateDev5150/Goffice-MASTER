@@ -2123,8 +2123,8 @@ test_range (void)
 	EQ (coshD (-1000.dd), PINF);
 
 	// pow
-	CLOSE_XF (powD (2.dd, 1100.dd), 1.358298529049386e331dd, 3);
-	CLOSE_XF (powD (-2.dd, 1101.dd), -2.716597058098772e331dd, 3);
+	CLOSE (powD (2.dd, 1100.dd), 1.358298529049386e331dd, 3);
+	CLOSE (powD (-2.dd, 1101.dd), -2.716597058098772e331dd, 3);
 	CLOSE_XF (powD (0.5dd, 1200.dd), 5.807713756217503e-362dd, 3);
 	CLOSE_XF (powD (3.dd, 700.dd), 9.657802140591758e333dd, 3);
 	EQ (powD (0.9dd, -9000.dd), PINF);
@@ -2142,9 +2142,9 @@ test_range (void)
 
 	// erfc: the answer is representable long after double gives up
 	CLOSE (erfcD (26.dd), 5.663192408856143e-296dd, 3);
-	CLOSE_XF (erfcD (27.dd), 5.237048923789256e-319dd, 3);
-	CLOSE_XF (erfcD (28.dd), 6.563215840328784e-343dd, 3);
-	CLOSE_XF (erfcD (30.dd), 2.564656203756112e-393dd, 3);
+	CLOSE (erfcD (27.dd), 5.237048923789256e-319dd, 3);
+	CLOSE (erfcD (28.dd), 6.563215840328784e-343dd, 3);
+	CLOSE (erfcD (30.dd), 2.564656203756112e-393dd, 3);
 	EQ (erfcD (31.dd), 0.dd);   // below the smallest denormal
 
 	// atan2 with a tiny quotient

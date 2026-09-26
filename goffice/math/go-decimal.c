@@ -1069,11 +1069,79 @@ erfD (_Decimal64 x)
 		return erf (x);
 }
 
+// Compute exp(-x*x) with extra precision, even though a plain "x*x" would
+// itself already lose precision at decimal64's 16 digits (that rounding
+// error gets amplified almost 1:1 into a *relative* error of exp(-x*x),
+// since exp is that sensitive to its argument once |x*x| is in the
+// hundreds).  We recover the rounding error of "x*x" exactly (TwoProduct,
+// via a Veltkamp/Dekker split of x) and fold that tiny correction into the
+// exponential's own argument reduction, the same way exp_helper folds in
+// the low part of ln(10).
+static _Decimal64
+neg_square_exp (_Decimal64 x)
+{
+	const _Decimal64 l10e = 0.434294481903251827651dd;
+	const _Decimal64 l10_h = 2.302585092994e-00dd;
+	const _Decimal64 l10_l = 4.568401799145e-14dd;
+	const _Decimal64 split = 100000001.dd;  // 10^8 + 1
+
+	_Decimal64 p = x * x;
+	if (p >= 1000)
+		return 0;  // To avoid Inf-Inf later
+
+	_Decimal64 t = x * split;
+	_Decimal64 x_hi = t - (t - x);
+	_Decimal64 x_lo = x - x_hi;
+	_Decimal64 err = ((x_hi * x_hi - p) + 2 * x_hi * x_lo) + x_lo * x_lo;
+	// x*x == p + err, to about twice decimal64's working precision.
+
+	// exp(-(p+err)): reduce based on -p as usual, but fold -err into the
+	// (already small) reduced residual before handing it to "double".
+	_Decimal64 y = -p;
+	_Decimal64 k = roundD (l10e * y);
+	_Decimal64 yr = ((y - (k * l10_h)) - (k * l10_l)) - err;
+	return scalblnD ((_Decimal64)exp (yr), k);
+}
+
 _Decimal64
 erfcD (_Decimal64 x)
 {
 	// No need to handle overflow on the left because of y=2 horizontal tangent
-	// No need to handle overflow to the right because underflow already happened
+
+	if (x >= 20) {
+		// For x this large, glibc's erfc() has already underflowed to
+		// 0 in "double" (that starts around x=27.5, and precision is
+		// already badly degraded from x=27 on, as the true result is
+		// deep in double's subnormal range) even though the true
+		// result is still comfortably representable in _Decimal64,
+		// whose range reaches down to 1e-398.  Use the standard
+		// asymptotic expansion instead, evaluated natively in
+		// _Decimal64 so we never round-trip through a double that
+		// might underflow:
+		//
+		//   erfc(x) ~ exp(-x^2)/(x*sqrt(pi)) *
+		//             (1 - 1/(2x^2) + 3/(4x^4) - 15/(8x^6) + ...)
+		//
+		// This is an asymptotic (eventually divergent) series, but
+		// it gets more accurate the larger x is, and for x >= 20
+		// twelve terms already give around 1e-25 relative accuracy --
+		// far more than _Decimal64's 16 digits need.
+		const _Decimal64 sqrt_pi = 1.772453850905516dd;
+		_Decimal64 inv2x2 = 0.5dd / (x * x);
+		_Decimal64 term = 1.dd, sum = 1.dd;
+		int n;
+
+		for (n = 1; n <= 12; n++) {
+			term *= -(_Decimal64)(2 * n - 1) * inv2x2;
+			sum += term;
+		}
+		return neg_square_exp (x) / (sqrt_pi * x) * sum;
+	} else if (x >= 40) {
+		// True for finite x as small as ~31, and for +Inf.  NaN
+		// compares false against everything, so it falls through to
+		// erfc(x) below as before.
+		return 0.dd;
+	}
 	// No need to handle underflow because erfc(0)=1
 	return erfc (x);
 }
@@ -1144,7 +1212,7 @@ _Decimal64
 coshD (_Decimal64 x)
 {
 	if (isnanD (x)) {
-		// Specifically there to -nan -> -nan to match libc's cosh
+		// Specifically there so -nan -> -nan to match libc's cosh
 		return x;
 	}
 
@@ -1647,8 +1715,27 @@ powD (_Decimal64 x, _Decimal64 y)
 		int iy = (int)roundD (y);
 		_Decimal64 dy = y - iy;
 		z = scalbnD (pow (x, dy), iy);
+	} else if (x == 2 && qinty && fabsD (y) <= G_MAXINT) {
+		// This could be extended to x being any integer power of 2
+		z = ldexpD (1, (int)y);
 	} else {
 		z = pow (x, y);
+		if (z == (_Decimal64)INFINITY || z < (_Decimal64)DBL_MIN) {
+			// Hmm...  Overflow or near-underflow
+			// Try via log10.
+			_Decimal64 lx = log10D (x);
+			_Decimal64 ylx = y * lx;
+			_Decimal64 iylx = roundD (ylx);
+			if (iylx > DECIMAL64_MAX_EXP + 20)
+				z = INFINITY;
+			else if (iylx < DECIMAL64_MIN_EXP - 20)
+				z = 0;
+			else {
+				// We don't have fmaD
+				double rylx = fma (y, lx, -iylx);
+				z = scalbnD (pow (10, rylx), (int)iylx);
+			}
+		}
 	}
 
 	return qneg ? -z : z;
